@@ -23,7 +23,7 @@ module DCell
 
     # Wait for incoming 0MQ messages
     def run
-      while true; handle_message! @socket.read; end
+      while true; handle_message! @socket.read_multiple; end
     end
 
     # Shut down the server
@@ -32,9 +32,14 @@ module DCell
     end
 
     # Handle incoming messages
-    def handle_message(message)
+    include RPC::Encoding
+    def handle_message(message_parts)
       begin
-        message = decode_message message
+        #TODO be encryption aware
+        #TODO be auth aware
+        # this actor doesn't know where the message came from, and it may be impossible to know. can authentication only be signaled by encryption?
+        # conclusion: messages must prepend their sender id as a frame
+        message = decode_message message_parts
       rescue InvalidMessageError => ex
         Celluloid::Logger.warn("couldn't decode message: #{ex.class}: #{ex}")
         return
@@ -44,20 +49,6 @@ module DCell
         message.dispatch
       rescue => ex
         Celluloid::Logger.crash("DCell::Server: message dispatch failed", ex)
-      end
-    end
-
-    class InvalidMessageError < StandardError; end # undecodable message
-
-    # Decode incoming messages
-    def decode_message(message)
-      if message[0..1].unpack("CC") == [Marshal::MAJOR_VERSION, Marshal::MINOR_VERSION]
-        begin
-          Marshal.load message
-        rescue => ex
-          raise InvalidMessageError, "invalid message: #{ex}"
-        end
-      else raise InvalidMessageError, "couldn't determine message format: #{message}"
       end
     end
 

@@ -77,4 +77,26 @@ module Celluloid
       DCell::FutureProxy._load(string)
     end
   end
+
+  module ZMQ
+    module WritableSocket
+       def send_multiple(messages)
+        unless ::ZMQ::Util.resultcode_ok? @socket.send_strings(messages)
+          raise IOError, "error sending 0MQ message: #{::ZMQ::Util.error_string}"
+        end
+        messages
+      end
+    end
+
+    module ReadableSocket
+      def read_multiple(list = [])
+        Celluloid.current_actor.wait_readable(@socket) if evented?
+
+        unless ::ZMQ::Util.resultcode_ok? @socket.recv_strings list
+          raise IOError, "error receiving ZMQ string: #{::ZMQ::Util.error_string}"
+        end
+        list
+      end
+    end
+  end
 end

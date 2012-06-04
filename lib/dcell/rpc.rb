@@ -28,6 +28,26 @@ module DCell
       end
     end
 
+    module Encoding
+      class InvalidMessageError < StandardError; end # undecodable message
+
+      def encode_message(message)
+        [DCell.id, Marshal.dump(message)]
+      end
+
+      def decode_message(parts)
+        message = parts[1]
+        if message[0..1].unpack("CC") == [Marshal::MAJOR_VERSION, Marshal::MINOR_VERSION]
+          begin
+            Marshal.load message
+          rescue => ex
+            raise InvalidMessageError, "invalid message: #{ex}"
+          end
+        else raise InvalidMessageError, "couldn't determine message format: #{message}"
+        end
+      end
+    end
+
     # Tracks calls-in-flight
     class Manager
       @mutex  = Mutex.new

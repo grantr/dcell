@@ -87,14 +87,16 @@ module DCell
     alias_method :all, :actors
 
     # Send a message to another DCell node
+    include RPC::Encoding
+    # TODO be encryption aware
     def send_message(message)
       begin
-        message = Marshal.dump(message)
+        message = encode_message(message)
       rescue => ex
         abort ex
       end
 
-      socket << message
+      socket.send_multiple message
     end
     alias_method :<<, :send_message
 
