@@ -1,55 +1,88 @@
 require 'redis'
-require 'redis-namespace'
 
 module DCell
   module Registry
-    class RedisAdapter
-      def initialize(options)
+    class RedisRegistry
+      include Celluloid
+      include Celluloid::Notifications
+
+      def initialize(options={})
         # Convert all options to symbols :/
         options = options.inject({}) { |h,(k,v)| h[k.to_sym] = v; h }
 
         @env = options[:env] || 'production'
         @namespace = options[:namespace] || "dcell_#{@env}"
 
-        redis  = Redis.new options
-        @redis = Redis::Namespace.new @namespace, :redis => redis
+        @redis  = Redis.new options
 
-        @global_registry = GlobalRegistry.new(@redis)
+        @nodes = {}
+        @globals = {}
+        run!
       end
 
-      def clear_globals
-        @global_registry.clear
+      def key(k)
+        "#{@namespace}:#{k}"
       end
 
-      class GlobalRegistry
-        def initialize(redis)
-          @redis = redis
+      def nodes
+        @redis.hgetall key('nodes')
+      end
+
+      def globals
+        @redis.hgetall key('globals')
+      end
+
+      def set_node(id, addr)
+        @redis.hset key('nodes'), id, addr
+        @nodes[id] = addr
+        publish("registry.node.set", id, addr)
+      end
+
+      def set_global(key, value)
+        string = Marshal.dump value
+        @redis.hset 'globals', key.to_s, string
+        @globals[key] = value
+        publish("registry.global.set", node_id, addr)
+      end
+
+      def run
+        update_nodes
+        update_globals
+        after(1) { run }
+      end
+
+      def update_nodes
+        all_nodes = nodes
+        new_nodes = all_nodes.reject { |id, addr| @nodes.has_key?(id) }
+        deleted_nodes = @nodes.reject { |id, addr| all_nodes.has_key?(id) }
+
+        new_nodes.each do |id, addr|
+          @nodes[id] = addr
+          publish("registry.node.set", id, addr)
         end
 
-        def get(key)
-          string = @redis.hget 'globals', key.to_s
-          Marshal.load string if string
-        end
-
-        # Set a global value
-        def set(key, value)
-          string = Marshal.dump value
-          @redis.hset 'globals', key.to_s, string
-        end
-
-        # The keys to all globals in the system
-        def global_keys
-          @redis.hkeys 'globals'
-        end
-
-        def clear
-          @redis.del 'globals'
+        deleted_nodes.each do |id, addr|
+          @nodes.delete(id)
+          publish("registry.node.del", id)
         end
       end
 
-      def get_global(key);        @global_registry.get(key) end
-      def set_global(key, value); @global_registry.set(key, value) end
-      def global_keys;            @global_registry.global_keys end
+      def update_globals
+        all_globals = globals
+        new_globals = all_globals.select { |key, value| @globals.has_key?(key) }
+        deleted_globals = @globals.reject { |key, value| all_globals.has_key?(key) }
+
+        new_globals.each do |key, string|
+          value = Marshal.load(string)
+          @globals[key] = value
+          publish("registry.global.set", key, value)
+        end
+
+        deleted_globals.each do |key, string|
+          @globals.delete(key)
+          publish("registry.global.del", key)
+        end
+      end
     end
   end
 end
