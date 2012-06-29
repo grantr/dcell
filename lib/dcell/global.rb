@@ -11,8 +11,21 @@ module DCell
       def_delegators "Celluloid::Actor[:global]", :all, :each, :find
     end
 
+    attr_reader :globals
+
     def initialize
+      #TODO get current globals from registry
       @globals = {}
+      subscribe(/^registry.global/, :handle_registry)
+    end
+
+    def handle_registry(topic, *args)
+      case topic
+      when "registry.global.set"
+        set(*args)
+      when "registry.global.del"
+        del(*args)
+      end
     end
 
     # Get a global value
@@ -26,6 +39,11 @@ module DCell
       @globals[key] = value
     end
     alias_method :[]=, :set
+
+    # Deletes a global value
+    def del(key)
+      @globals.delete(key)
+    end
 
     # Get the keys for all the globals in the system
     def keys
