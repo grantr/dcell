@@ -6,7 +6,10 @@ module DCell
     include Celluloid::ZMQ
     include Celluloid::Notifications
 
+    attr_reader :nodes
+
     def initialize
+      @nodes = {}
       #TODO get current nodes from registry
       subscribe(/^registry.node/, :handle_registry)
     end
@@ -21,18 +24,14 @@ module DCell
       end
     end
 
-    def nodes
-      @nodes ||= {}
-    end
-
     def add_node(id, addr)
-      nodes[id] = Node.new(id, addr).tap do |node|
+      @nodes[id] = Node.new(id, addr).tap do |node|
         node.attach self
       end
     end
 
     def del_node(id)
-      nodes.delete(id)
+      @nodes.delete(id)
     end
   end
 end
